@@ -19,8 +19,12 @@ function SmartOverflow (containerSelector, selector, config) {
 		return;
 	}
 	this.domElement = this.element.get(0);
-	this.element.css('width', '100%')
-		.css('height', '100%')
+
+	if (this.config.fillWidth) {
+		this.element.css('width', '100%');
+	}
+
+	this.element.css('height', '100%')
 		.css('padding', 0)
 		.css('margin', 0);
 
@@ -42,6 +46,12 @@ function SmartOverflow (containerSelector, selector, config) {
 	if (this.config.hasShadow) {
 		this._createShadow();
 	}
+
+	if (this.config.hasThumb || this.config.hasShadow) {
+		this.containerElement.css('position', 'relative');
+	}
+
+	this._checkContentScrolled();
 
 	this._bindContentModifiedEvent();
 
@@ -75,12 +85,18 @@ SmartOverflow.prototype = {
 	 * @type {Object}
 	 */
 	config: {
+		fillWidth: true,
+
 		hasThumb: true,
+		hasThumbTrack: true,
+		autoThumbVisible: true,
 		canMoveThumb: true,
+		thumbClass: "so-thumb",
+		thumbTrackClass: "so-thumb-track",
+
 		hasShadow: true,
 		shadowTopClass: "so-shadow so-shadow-top",
-		shadowBottomClass: "so-shadow so-shadow-bottom",
-		thumbClass: "so-thumb"
+		shadowBottomClass: "so-shadow so-shadow-bottom"
 	},
 
 	/**
@@ -90,7 +106,8 @@ SmartOverflow.prototype = {
 	attributes: {
 		_solved: false,
 		elementHeight: 0,
-		elementWidth: 0,
+
+		scrollSpace: 0,
 		scrollHeight: 0,
 		scrollTop: 0,
 
@@ -98,8 +115,8 @@ SmartOverflow.prototype = {
 		thumbSpace: 0,
 		thumbRatio: 0,
 
-		isShadowTopVisible: false,
-		isShadowBottomVisible: false
+		isTopHidden: false,
+		isBottomHidden: false
 	},
 
 	/**
@@ -107,9 +124,10 @@ SmartOverflow.prototype = {
 	 * @type {Object}
 	 */
 	templates: {
-		thumb: '<div style="position: absolute; background: grey; top: {1}px; right: 0; width: 15px; height: {2}px;" class="{0}"></div>',
-		shadowTop: '<div style="position: absolute; background: black; top: 0; left: 0; width: 100%; height: 15px;" class="{0}"></div>',
-		shadowBottom: '<div style="position: absolute; background: black; bottom: 0; left: 0; width: 100%; height: 15px;" class="{0}"></div>'
+		thumbTrack: '<div style="position: absolute; background: #808080; top: 0; right: 0; width: 15px; height: 100%;" class="{0}"></div>',
+		thumb: '<div style="position: absolute; background: #2489ce; top: {1}px; right: 0; width: 15px; height: {2}px; cursor: pointer;" class="{0}"></div>',
+		shadowTop: '<div style="position: absolute; background: #000000; top: 0; left: 0; width: 100%; height: 15px;" class="{0}"></div>',
+		shadowBottom: '<div style="position: absolute; background: #000000; bottom: 0; left: 0; width: 100%; height: 15px;" class="{0}"></div>'
 	},
 
 	/**
@@ -135,6 +153,12 @@ SmartOverflow.prototype = {
 	 * @type {Object}
 	 */
 	elementThumb: null,
+
+	/**
+	 * Thumb track element
+	 * @type {Object}
+	 */
+	elementThumbTrack: null,
 
 	/**
 	 * Top shadow element
@@ -178,7 +202,11 @@ SmartOverflow.prototype = {
 			if (!this.config.hasOwnProperty(i)) {
 				continue;
 			}
-			extendedConfig[i] = ((config)? config[i] : null) || this.config[i];
+			if (!config || typeof config[i] === 'undefined') {
+				extendedConfig[i] = this.config[i];
+				continue;
+			}
+			extendedConfig[i] = config[i];
 		}
 		return extendedConfig;
 	},
@@ -194,9 +222,9 @@ SmartOverflow.prototype = {
 			return this.attributes;
 		}
 
-		attributes.elementHeight = this.element.height();
-		attributes.elementWidth = this.element.width();
+		attributes.elementHeight = this.containerElement.height();
 		attributes.scrollHeight = this.domElement.scrollHeight;
+		attributes.scrollSpace = attributes.scrollHeight - attributes.elementHeight;
 		attributes.scrollTop = attributes.scrollTop || 0;
 		attributes.scrollTimeStamp = attributes.scrollTimeStamp || 0;
 		attributes.scrollTimeStampLast = attributes.scrollTimeStampLast || 0;
@@ -205,7 +233,7 @@ SmartOverflow.prototype = {
 		}
 		attributes.thumbHeight = Math.round(attributes.elementHeight * attributes.elementHeight / attributes.scrollHeight);
 		attributes.thumbSpace = attributes.elementHeight - attributes.thumbHeight;
-		attributes.thumbRatio = attributes.thumbSpace / (attributes.scrollHeight - attributes.elementHeight - attributes.thumbHeight);
+		attributes.thumbRatio = this._truncateValue(attributes.thumbSpace / attributes.scrollSpace, 0, 1);
 		return attributes;
 	},
 
@@ -224,32 +252,7 @@ SmartOverflow.prototype = {
 			this.elementThumb.css('top', this._truncateValue(this.attributes.scrollTop * this.attributes.thumbRatio, 0, this.attributes.thumbSpace));
 		}
 
-		// shadow
-		if (!this.elementShadowTop && this.elementShadowBottom) {
-			return;
-		}
-
-		// shadowTop
-		if (!this.attributes.isShadowTopVisible && this.attributes.scrollTop > 0) {
-			this.attributes.isShadowTopVisible = true;
-			this.elementShadowTop.show();
-		}
-
-		else if (this.attributes.scrollTop <= 5) {
-			this.attributes.isShadowTopVisible = false;
-			this.elementShadowTop.hide();
-		}
-
-		// shadowBottom
-		if (!this.attributes.isShadowBottomVisible && this.attributes.scrollTop < this.attributes.scrollHeight - this.attributes.elementHeight) {
-			this.attributes.isShadowBottomVisible = true;
-			this.elementShadowBottom.show();
-		}
-
-		else if (this.attributes.scrollTop >= this.attributes.scrollHeight - this.attributes.elementHeight - 5) {
-			this.attributes.isShadowBottomVisible = false;
-			this.elementShadowBottom.hide();
-		}
+		this._checkContentScrolled();
 	},
 
 	/**
@@ -258,43 +261,171 @@ SmartOverflow.prototype = {
 	 * @private
 	 */
 	_hasContentOverflow: function () {
-		return (this.attributes.scrollHeight > this.element.height());
+		return (this.attributes.scrollHeight > this.attributes.elementHeight);
 	},
 
 	/**
-	 * Need show thumb?
-	 * @return {Boolean}
+	 * Check content overflow
 	 * @private
 	 */
-	_isNeedShowThumb: function () {
-		if (!this.elementThumb || !this.config.hasThumb) {
-			return false;
-		}
-		return this._hasContentOverflow();
+	_checkContentOverflow: function () {
+		this._onContentOverflowChanged(this._hasContentOverflow());
 	},
 
 	/**
-	 * Need show top shadow?
-	 * @return {Boolean}
+	 * Check scrolled content state
 	 * @private
 	 */
-	_isNeedShowTopShadow: function () {
-		if (!this.elementShadowTop || !this.config.hasShadow) {
-			return false;
+	_checkContentScrolled: function () {
+		if (!this.attributes.isTopHidden && this.attributes.scrollTop > 0) {
+			this._onNonTopOfContent();
 		}
-		return this._hasContentOverflow() && (this.attributes.scrollTop > 0);
+		else if (this.attributes.scrollTop === 0) {
+			this._onTopOfContent();
+		}
+
+		if (!this.attributes.isBottomHidden && this.attributes.scrollTop < this.attributes.scrollSpace) {
+			this._onNonBottomOfContent();
+		}
+		else if (this.attributes.scrollTop >= this.attributes.scrollSpace) {
+			this._onBottomOfContent();
+		}
 	},
 
 	/**
-	 * Need show bottom shadow?
-	 * @return {Boolean}
+	 * Event: onTopOfContent
 	 * @private
 	 */
-	_isNeedShowBottomShadow: function () {
-		if (!this.elementShadowTop || !this.config.hasShadow) {
-			return false;
+	_onTopOfContent: function () {
+		this._changeShadowVisible(false, null);
+		this._changeScrollingContentState(false, null);
+	},
+
+	/**
+	 * Event: onBottomOfContent
+	 * @private
+	 */
+	_onBottomOfContent: function () {
+		this._changeShadowVisible(null, false);
+		this._changeScrollingContentState(null, false);
+	},
+
+	/**
+	 * Event: onNonTopOfContent
+	 * @private
+	 */
+	_onNonTopOfContent: function () {
+		this._changeShadowVisible(true, null);
+		this._changeScrollingContentState(true, null);
+	},
+
+	/**
+	 * Event: onNonBottomOfContent
+	 * @private
+	 */
+	_onNonBottomOfContent: function () {
+		this._changeShadowVisible(null, true);
+		this._changeScrollingContentState(null, true);
+	},
+
+	/**
+	 * Event: onContentOverflowChanged
+	 * @param {Boolean} hasOverflow
+	 * @private
+	 */
+	_onContentOverflowChanged: function (hasOverflow) {
+		this._onContentOverflowWithThumbChanged(hasOverflow);
+		this._onContentOverflowWithShadowChanged(hasOverflow);
+	},
+
+	/**
+	 * Event: onContentOverflowWithThumbChanged
+	 * @param {Boolean} hasOverflow
+	 * @private
+	 */
+	_onContentOverflowWithThumbChanged: function (hasOverflow) {
+		if (!this.config.hasThumb) {
+			return;
 		}
-		return this._hasContentOverflow() && (this.attributes.scrollTop < this.attributes.scrollHeight - this.attributes.elementHeight);
+
+		if (this.config.autoThumbVisible) {
+			this._changeThumbVisible(hasOverflow);
+		}
+		else {
+			this._changeThumbVisible(true);
+		}
+	},
+
+	/**
+	 * Event: onContentOverflowWithShadowChanged
+	 * @param {Boolean} hasOverflow
+	 * @private
+	 */
+	_onContentOverflowWithShadowChanged: function (hasOverflow) {
+		if (this.config.hasShadow && !hasOverflow) {
+			this._changeShadowVisible(false, false);
+		}
+	},
+
+	/**
+	 * Change thumb visible
+	 * @param {Boolean} isVisible
+	 * @private
+	 */
+	_changeThumbVisible: function (isVisible) {
+		if (!this.config.hasThumb) {
+			return;
+		}
+		if (isVisible) {
+			this.elementThumb.show();
+			this.elementThumbTrack && this.elementThumbTrack.show();
+		}
+		else {
+			this.elementThumb.hide();
+			this.elementThumbTrack && this.elementThumbTrack.hide();
+		}
+	},
+
+	/**
+	 * Change shadow visible
+	 * @param {Boolean|null} isTopShadowVisible
+	 * @param {Boolean|null} isBottomShadowVisible
+	 * @private
+	 */
+	_changeShadowVisible: function (isTopShadowVisible, isBottomShadowVisible) {
+		if (!this.config.hasShadow) {
+			return;
+		}
+		// top shadow
+		if (isTopShadowVisible) {
+			this.elementShadowTop.show();
+		}
+		else if (isTopShadowVisible != null) {
+			this.elementShadowTop.hide();
+		}
+
+		// bottom shadow
+		if (isBottomShadowVisible) {
+			this.elementShadowBottom.show();
+		}
+		else if (isBottomShadowVisible != null) {
+			this.elementShadowBottom.hide();
+		}
+	},
+
+	/**
+	 * Change scrolling content state
+	 * @param {Boolean|null} isTopHidden
+	 * @param {Boolean|null} isBottomHidden
+	 * @private
+	 */
+	_changeScrollingContentState: function (isTopHidden, isBottomHidden) {
+		if (isTopHidden != null) {
+			this.attributes.isTopHidden = isTopHidden;
+		}
+		if (isBottomHidden != null) {
+			this.attributes.isBottomHidden = isBottomHidden;
+		}
 	},
 
 	/**
@@ -342,15 +473,11 @@ SmartOverflow.prototype = {
 		);
 		this.elementShadowTop = shadowTop;
 		this.elementShadowBottom = shadowBottom;
-		if (!this._isNeedShowTopShadow()) {
-			shadowTop.hide();
-		}
-		if (!this._isNeedShowBottomShadow()) {
-			shadowBottom.hide();
-		}
+
+		this._onContentOverflowWithShadowChanged(this._hasContentOverflow());
+
 		shadowTop.appendTo(this.containerElement);
 		shadowBottom.appendTo(this.containerElement);
-		this.containerElement.css('position', 'relative');
 	},
 
 	/**
@@ -358,6 +485,15 @@ SmartOverflow.prototype = {
 	 * @private
 	 */
 	_createThumb: function () {
+		var thumbTrack;
+		if (this.config.hasThumbTrack) {
+			thumbTrack = $(this._format(
+				this.templates.thumbTrack,
+				[this.config.thumbTrackClass]
+			)).appendTo(this.containerElement);
+			this.elementThumbTrack = thumbTrack;
+			thumbTrack.appendTo(this.containerElement);
+		}
 		var thumb = $(
 			this._format(
 				this.templates.thumb,
@@ -365,11 +501,10 @@ SmartOverflow.prototype = {
 			)
 		);
 		this.elementThumb = thumb;
-		if (!this._isNeedShowThumb()) {
-			thumb.hide();
-		}
+
+		this._onContentOverflowWithThumbChanged(this._hasContentOverflow());
+
 		thumb.appendTo(this.containerElement);
-		this.containerElement.css('position', 'relative');
 	},
 
 	/**
@@ -379,7 +514,9 @@ SmartOverflow.prototype = {
 	_bindTouchEvents: function () {
 		var scrollStartPos = 0,
 			element = this.element,
-			timeStampStart = 0;
+			timeStampStart = 0,
+			self = this,
+			attributes = this.attributes;
 
 		element.on("touchstart", function (event) {
 			element.stop();
@@ -394,13 +531,10 @@ SmartOverflow.prototype = {
 			event = event.originalEvent;
 			var value = event.touches[0].pageY;
 			this.scrollSpeed = (value - this.scrollLast);
-			this.scrollTop = scrollStartPos - value;
+			this.scrollTop = self._truncateValue(scrollStartPos - value, 0, attributes.scrollSpace);
 			this.scrollLast = value;
 			event.preventDefault();
 		});
-
-		var self = this,
-			attributes = this.attributes;
 
 		element.on("touchend", function (event) {
 			element.stop();
@@ -409,6 +543,7 @@ SmartOverflow.prototype = {
 				return;
 			}
 			var value = this.scrollTop - (this.scrollSpeed * 2);
+			value = self._truncateValue(value, 0, attributes.scrollSpace);
 			element.animate({ scrollTop: value }, "fast");
 
 			attributes.scrollTop = value;
@@ -438,7 +573,7 @@ SmartOverflow.prototype = {
 		elementThumb.on("mousedown", function (event) {
 			isClicked = true;
 			event = event.originalEvent;
-			var value = (event.y - element.offset().top) / attributes.thumbRatio;
+			var value = (event.pageY - element.offset().top) / attributes.thumbRatio;
 			scrollStartPos = domElement.scrollTop - value;
 			event.preventDefault();
 		});
@@ -451,9 +586,10 @@ SmartOverflow.prototype = {
 			if (attributes.scrollTimeStamp > event.timeStamp) {
 				return;
 			}
-			var value = (event.y - element.offset().top) / attributes.thumbRatio;
-			attributes.scrollTop = domElement.scrollTop = scrollStartPos + value;
+			var value = (event.pageY - element.offset().top) / attributes.thumbRatio;
+			domElement.scrollTop = self._truncateValue(scrollStartPos + value, 0, attributes.scrollSpace);
 
+			attributes.scrollTop = domElement.scrollTop;
 			attributes.scrollTimeStamp = event.timeStamp;
 			setTimeout(self._update, 0);
 			event.preventDefault();
@@ -554,46 +690,16 @@ SmartOverflow.prototype = {
 		this.attributes = this._calculateAttributes();
 
 		// thumb
-		if (this.elementThumb) {
-			if (!this._isNeedShowThumb()) {
-				this.elementThumb.hide();
-			}
-			else {
-				this.elementThumb.show();
-			}
+		if (this.config.hasThumb) {
 			this.elementThumb.css('height', this.attributes.thumbHeight);
 		}
 
 		// shadow
-		if (!this._hasContentOverflow() && this.config.hasShadow) {
-			this.attributes.isShadowTopVisible = false;
-			this.elementShadowTop.hide();
-			this.attributes.isShadowBottomVisible = false;
-			this.elementShadowBottom.hide();
-			return;
+		if (this.config.hasShadow) {
+
 		}
 
-		if (this.elementShadowBottom && this.elementShadowTop) {
-			// shadowTop
-			if (this._isNeedShowTopShadow()) {
-				this.attributes.isShadowTopVisible = true;
-				this.elementShadowTop.show();
-			}
-			else {
-				this.attributes.isShadowTopVisible = false;
-				this.elementShadowTop.hide();
-			}
-
-			// shadowBottom
-			if (this._isNeedShowBottomShadow()) {
-				this.attributes.isShadowBottomVisible = true;
-				this.elementShadowBottom.show();
-			}
-			else {
-				this.attributes.isShadowBottomVisible = false;
-				this.elementShadowBottom.hide();
-			}
-		}
+		this._checkContentOverflow();
 
 		this._update();
 	},
@@ -613,6 +719,7 @@ SmartOverflow.prototype = {
 				this.elementThumb && this.elementThumb.off();
 			}
 			this.elementThumb && this.elementThumb.remove();
+			this.elementThumbTrack && this.elementThumbTrack.remove();
 		}
 		if (this.config.hasShadow) {
 			this.elementShadowTop && this.elementShadowTop.remove();
