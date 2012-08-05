@@ -20,13 +20,8 @@ function SmartOverflow (containerSelector, selector, config) {
 	}
 	this.domElement = this.element.get(0);
 
-	if (this.config.fillWidth) {
-		this.element.css('width', '100%');
-	}
-
-	this.element.css('height', '100%')
-		.css('padding', 0)
-		.css('margin', 0);
+	this.containerElement.addClass(this.config.containerClass);
+	this.element.addClass(this.config.contentClass);
 
 	this.attributes = this._calculateAttributes();
 	this._update = this._bind(this._update, this);
@@ -36,9 +31,7 @@ function SmartOverflow (containerSelector, selector, config) {
 	if (this.config.hasThumb) {
 		this._createThumb();
 		if (!this.hasTouchEvents && !this._isWindowsPhone()) {
-			this.element.css('overflow', 'hidden');
 			this._bindThumbEvents();
-
 			this.overflowMethod = 'no-touch, mouse scroll';
 		}
 	}
@@ -47,20 +40,17 @@ function SmartOverflow (containerSelector, selector, config) {
 		this._createShadow();
 	}
 
-	if (this.config.hasThumb || this.config.hasShadow) {
-		this.containerElement.css('position', 'relative');
-	}
-
 	this._checkContentScrolled();
 
 	this._bindContentModifiedEvent();
 
 	if (!this.hasTouchEvents && !this._isWindowsPhone()) {
+		// no touch
+		this.containerElement.addClass(this.config.hasNotTouchClass);
 		return;
 	}
-
-	this.element.css('overflow', 'auto');
-	this.containerElement.css('overflow', 'hidden');
+	// has touch
+	this.containerElement.addClass(this.config.hasTouchClass);
 
 	this.hasOverflowScroll = this._hasOverflowScrolling() || this._isWindowsPhone();
 
@@ -85,7 +75,10 @@ SmartOverflow.prototype = {
 	 * @type {Object}
 	 */
 	config: {
-		fillWidth: true,
+		containerClass: "so-container",
+		contentClass: "so-content",
+		hasTouchClass: "so-touch",
+		hasNotTouchClass: "so-no-touch",
 
 		hasThumb: true,
 		hasThumbTrack: true,
@@ -96,7 +89,9 @@ SmartOverflow.prototype = {
 
 		hasShadow: true,
 		shadowTopClass: "so-shadow so-shadow-top",
-		shadowBottomClass: "so-shadow so-shadow-bottom"
+		shadowBottomClass: "so-shadow so-shadow-bottom",
+
+		inertia: 3
 	},
 
 	/**
@@ -117,17 +112,6 @@ SmartOverflow.prototype = {
 
 		isTopHidden: false,
 		isBottomHidden: false
-	},
-
-	/**
-	 * Templates
-	 * @type {Object}
-	 */
-	templates: {
-		thumbTrack: '<div style="position: absolute; background: #808080; top: 0; right: 0; width: 15px; height: 100%;" class="{0}"></div>',
-		thumb: '<div style="position: absolute; background: #2489ce; top: {1}px; right: 0; width: 15px; height: {2}px; cursor: pointer;" class="{0}"></div>',
-		shadowTop: '<div style="position: absolute; background: #000000; top: 0; left: 0; width: 100%; height: 15px;" class="{0}"></div>',
-		shadowBottom: '<div style="position: absolute; background: #000000; bottom: 0; left: 0; width: 100%; height: 15px;" class="{0}"></div>'
 	},
 
 	/**
@@ -461,16 +445,12 @@ SmartOverflow.prototype = {
 	 */
 	_createShadow: function () {
 		var shadowTop = $(
-			this._format(
-				this.templates.shadowTop,
-				[this.config.shadowTopClass]
-			)
-		), shadowBottom = $(
-			this._format(
-				this.templates.shadowBottom,
-				[this.config.shadowBottomClass]
-			)
-		);
+				document.createElement("div")
+			).addClass(this.config.shadowTopClass),
+			shadowBottom = $(
+				document.createElement("div")
+			).addClass(this.config.shadowBottomClass);
+
 		this.elementShadowTop = shadowTop;
 		this.elementShadowBottom = shadowBottom;
 
@@ -487,19 +467,16 @@ SmartOverflow.prototype = {
 	_createThumb: function () {
 		var thumbTrack;
 		if (this.config.hasThumbTrack) {
-			thumbTrack = $(this._format(
-				this.templates.thumbTrack,
-				[this.config.thumbTrackClass]
-			)).appendTo(this.containerElement);
+			thumbTrack = $(document.createElement("div")).addClass(this.config.thumbTrackClass);
+
 			this.elementThumbTrack = thumbTrack;
 			thumbTrack.appendTo(this.containerElement);
 		}
 		var thumb = $(
-			this._format(
-				this.templates.thumb,
-				[this.config.thumbClass, '' + this.attributes.scrollTop, '' + this.attributes.thumbHeight]
-			)
-		);
+				document.createElement("div")
+			).addClass(this.config.thumbClass)
+			.css("height", this.attributes.thumbHeight);
+
 		this.elementThumb = thumb;
 
 		this._onContentOverflowWithThumbChanged(this._hasContentOverflow());
@@ -516,9 +493,10 @@ SmartOverflow.prototype = {
 			element = this.element,
 			timeStampStart = 0,
 			self = this,
-			attributes = this.attributes;
+			attributes = this.attributes,
+			inertia = this.config.inertia;
 
-		element.on("touchstart", function (event) {
+		element.on("touchstart.so", function (event) {
 			element.stop();
 			event = event.originalEvent;
 			timeStampStart = event.timeStamp;
@@ -527,7 +505,7 @@ SmartOverflow.prototype = {
 			this.scrollLast = value;
 		});
 
-		element.on("touchmove", function (event) {
+		element.on("touchmove.so", function (event) {
 			event = event.originalEvent;
 			var value = event.touches[0].pageY;
 			this.scrollSpeed = (value - this.scrollLast);
@@ -536,13 +514,14 @@ SmartOverflow.prototype = {
 			event.preventDefault();
 		});
 
-		element.on("touchend", function (event) {
+		element.on("touchend.so", function (event) {
 			element.stop();
 			event = event.originalEvent;
 			if (event.timeStamp - timeStampStart <= 150) {
+				// tap event
 				return;
 			}
-			var value = this.scrollTop - (this.scrollSpeed * 2);
+			var value = this.scrollTop - (this.scrollSpeed * inertia);
 			value = self._truncateValue(value, 0, attributes.scrollSpace);
 			element.animate({ scrollTop: value }, "fast");
 
@@ -570,7 +549,7 @@ SmartOverflow.prototype = {
 			attributes = this.attributes,
 			element = this.element;
 
-		elementThumb.on("mousedown", function (event) {
+		elementThumb.on("mousedown.so", function (event) {
 			isClicked = true;
 			event = event.originalEvent;
 			var value = (event.pageY - element.offset().top) / attributes.thumbRatio;
@@ -578,7 +557,7 @@ SmartOverflow.prototype = {
 			event.preventDefault();
 		});
 
-		$(document).on("mousemove.thumb", function (event) {
+		$(document).on("mousemove.so", function (event) {
 			if (!isClicked) {
 				return;
 			}
@@ -596,7 +575,7 @@ SmartOverflow.prototype = {
 
 		});
 
-		$(document).on("mouseup.thumb", function (event) {
+		$(document).on("mouseup.so", function (event) {
 			isClicked = false;
 			event.preventDefault();
 		});
@@ -608,7 +587,7 @@ SmartOverflow.prototype = {
 	 */
 	_bindContentModifiedEvent: function () {
 		var self = this;
-		this.element.on('DOMSubtreeModified', function (event) {
+		this.element.on('DOMSubtreeModified.so', function (event) {
 			self.refresh();
 		});
 	},
@@ -621,7 +600,7 @@ SmartOverflow.prototype = {
 		var self = this,
 			attributes = this.attributes;
 
-		this.element.on("scroll", function (event) {
+		this.element.on("scroll.so", function (event) {
 			if (event.timeStamp - attributes.scrollTimeStamp < 100) {
 				return;
 			}
@@ -691,7 +670,7 @@ SmartOverflow.prototype = {
 
 		// thumb
 		if (this.config.hasThumb) {
-			this.elementThumb.css('height', this.attributes.thumbHeight);
+			this.elementThumb.css("height", this.attributes.thumbHeight);
 		}
 
 		// shadow
@@ -711,12 +690,11 @@ SmartOverflow.prototype = {
 		if (!this.element) {
 			return;
 		}
-		this.element.off();
+		this.element.off(".so");
 		if (this.config.hasThumb) {
 			if (this.config.canMoveThumb) {
-				$(document).off("mousemove.thumb");
-				$(document).off("mouseup.thumb");
-				this.elementThumb && this.elementThumb.off();
+				$(document).off(".so");
+				this.elementThumb && this.elementThumb.off(".so");
 			}
 			this.elementThumb && this.elementThumb.remove();
 			this.elementThumbTrack && this.elementThumbTrack.remove();
