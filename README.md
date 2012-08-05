@@ -18,3 +18,5 @@ Has a thumb and top/bottom shadow.
 Scrolling content can consist any DOM elements with own click events.
 
 Required jQuery 1.7.1 and later.
+
+#Demo [is here](http://jsfiddle.net/jughosta/P28ju/embedded/result/ "SmartOverflow Demo")
