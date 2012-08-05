@@ -28,16 +28,19 @@ function SmartOverflow (containerSelector, selector, config) {
 
 	this.hasTouchEvents = this._hasTouchEvents();
 
+	if (this.config.hasShadow) {
+		this._createShadow();
+	}
+
 	if (this.config.hasThumb) {
 		this._createThumb();
-		if (!this.hasTouchEvents && !this._isWindowsPhone()) {
+		if (this.config.canMoveThumb && !this.hasTouchEvents && !this._isWindowsPhone()) {
 			this._bindThumbEvents();
 			this.overflowMethod = 'no-touch, mouse scroll';
 		}
-	}
-
-	if (this.config.hasShadow) {
-		this._createShadow();
+		if (this.config.canMoveThumb && this.config.hasThumbArrows) {
+			this._bindThumbArrowsEvents();
+		}
 	}
 
 	this._checkContentScrolled();
@@ -79,13 +82,20 @@ SmartOverflow.prototype = {
 		contentClass: "so-content",
 		hasTouchClass: "so-touch",
 		hasNotTouchClass: "so-no-touch",
+		onTopClass: "so-on-top",
+		onBottomClass: "so-on-bottom",
 
 		hasThumb: true,
 		hasThumbTrack: true,
+		hasThumbArrows: true,
+		thumbArrowHeight: 15,
+		thumbArrowStep: 0.1, // 10% of content
 		autoThumbVisible: true,
 		canMoveThumb: true,
 		thumbClass: "so-thumb",
 		thumbTrackClass: "so-thumb-track",
+		thumbArrowTopClass: "so-thumb-arrow so-thumb-arrow-top",
+		thumbArrowBottomClass: "so-thumb-arrow so-thumb-arrow-bottom",
 
 		hasShadow: true,
 		shadowTopClass: "so-shadow so-shadow-top",
@@ -106,6 +116,8 @@ SmartOverflow.prototype = {
 		scrollHeight: 0,
 		scrollTop: 0,
 
+		thumbArrowStep: 0,
+		thumbArrowHeight: 0,
 		thumbHeight: 0,
 		thumbSpace: 0,
 		thumbRatio: 0,
@@ -143,6 +155,18 @@ SmartOverflow.prototype = {
 	 * @type {Object}
 	 */
 	elementThumbTrack: null,
+
+	/**
+	 * Thumb arrow top element
+	 * @type {Object}
+	 */
+	elementThumbArrowTop: null,
+
+	/**
+	 * Thumb arrow bottom element
+	 * @type {Object}
+	 */
+	elementThumbArrowBottom: null,
 
 	/**
 	 * Top shadow element
@@ -215,8 +239,14 @@ SmartOverflow.prototype = {
 		if (!this.config.hasThumb) {
 			return attributes;
 		}
+		attributes.thumbArrowHeight = 0;
+		if (this.config.hasThumbArrows) {
+
+			attributes.thumbArrowHeight = this.config.thumbArrowHeight;
+			attributes.thumbArrowStep = this.config.thumbArrowStep * attributes.scrollHeight;
+		}
 		attributes.thumbHeight = Math.round(attributes.elementHeight * attributes.elementHeight / attributes.scrollHeight);
-		attributes.thumbSpace = attributes.elementHeight - attributes.thumbHeight;
+		attributes.thumbSpace = attributes.elementHeight - attributes.thumbHeight - attributes.thumbArrowHeight;
 		attributes.thumbRatio = this._truncateValue(attributes.thumbSpace / attributes.scrollSpace, 0, 1);
 		return attributes;
 	},
@@ -233,7 +263,7 @@ SmartOverflow.prototype = {
 
 		// thumb
 		if (this.elementThumb) {
-			this.elementThumb.css('top', this._truncateValue(this.attributes.scrollTop * this.attributes.thumbRatio, 0, this.attributes.thumbSpace));
+			this.elementThumb.css('top', this._truncateValue(this.attributes.thumbArrowHeight + this.attributes.scrollTop * this.attributes.thumbRatio, 0, this.attributes.thumbSpace));
 		}
 
 		this._checkContentScrolled();
@@ -283,6 +313,7 @@ SmartOverflow.prototype = {
 	_onTopOfContent: function () {
 		this._changeShadowVisible(false, null);
 		this._changeScrollingContentState(false, null);
+		this.containerElement.addClass(this.config.onTopClass);
 	},
 
 	/**
@@ -292,6 +323,7 @@ SmartOverflow.prototype = {
 	_onBottomOfContent: function () {
 		this._changeShadowVisible(null, false);
 		this._changeScrollingContentState(null, false);
+		this.containerElement.addClass(this.config.onBottomClass);
 	},
 
 	/**
@@ -301,6 +333,7 @@ SmartOverflow.prototype = {
 	_onNonTopOfContent: function () {
 		this._changeShadowVisible(true, null);
 		this._changeScrollingContentState(true, null);
+		this.containerElement.removeClass(this.config.onTopClass);
 	},
 
 	/**
@@ -310,6 +343,7 @@ SmartOverflow.prototype = {
 	_onNonBottomOfContent: function () {
 		this._changeShadowVisible(null, true);
 		this._changeScrollingContentState(null, true);
+		this.containerElement.removeClass(this.config.onBottomClass);
 	},
 
 	/**
@@ -465,17 +499,30 @@ SmartOverflow.prototype = {
 	 * @private
 	 */
 	_createThumb: function () {
-		var thumbTrack;
 		if (this.config.hasThumbTrack) {
-			thumbTrack = $(document.createElement("div")).addClass(this.config.thumbTrackClass);
+			var thumbTrack = $(document.createElement("div")).addClass(this.config.thumbTrackClass);
 
 			this.elementThumbTrack = thumbTrack;
 			thumbTrack.appendTo(this.containerElement);
+		}
+		if (this.config.hasThumbArrows) {
+			var thumbArrowTop = $(document.createElement("div")).addClass(this.config.thumbArrowTopClass),
+				thumbArrowBottom = $(document.createElement("div")).addClass(this.config.thumbArrowBottomClass);
+
+			this.elementThumbArrowTop = thumbArrowTop;
+			thumbArrowTop.appendTo(this.containerElement);
+
+			this.elementThumbArrowBottom = thumbArrowBottom;
+			thumbArrowBottom.appendTo(this.containerElement);
 		}
 		var thumb = $(
 				document.createElement("div")
 			).addClass(this.config.thumbClass)
 			.css("height", this.attributes.thumbHeight);
+
+		if (this.config.hasThumbArrows) {
+			thumb.css('top', this.config.thumbArrowHeight);
+		}
 
 		this.elementThumb = thumb;
 
@@ -522,12 +569,7 @@ SmartOverflow.prototype = {
 				return;
 			}
 			var value = this.scrollTop - (this.scrollSpeed * inertia);
-			value = self._truncateValue(value, 0, attributes.scrollSpace);
-			element.animate({ scrollTop: value }, "fast");
-
-			attributes.scrollTop = value;
-			attributes.scrollTimeStamp = event.timeStamp;
-			setTimeout(self._update, 0);
+			self.scroll(value, event.timeStamp);
 
 			event.preventDefault();
 		});
@@ -578,6 +620,25 @@ SmartOverflow.prototype = {
 		$(document).on("mouseup.so", function (event) {
 			isClicked = false;
 			event.preventDefault();
+		});
+	},
+
+	/**
+	 * Bind thumb arrow events
+	 * @private
+	 */
+	_bindThumbArrowsEvents: function () {
+		var thumbArrowTop = this.elementThumbArrowTop,
+			thumbArrowBottom = this.elementThumbArrowBottom,
+			attributes = this.attributes,
+			self = this;
+
+		thumbArrowTop.on("click.so", function (event) {
+			self.scroll(attributes.scrollTop - attributes.thumbArrowStep, event.timeStamp);
+		});
+
+		thumbArrowBottom.on("click.so", function (event) {
+			self.scroll(attributes.scrollTop + attributes.thumbArrowStep, event.timeStamp);
 		});
 	},
 
@@ -663,6 +724,26 @@ SmartOverflow.prototype = {
 	},
 
 	/**
+	 * Scroll
+	 * @param {Number} value
+	 * @param {Number} timeStamp
+	 */
+	scroll: function (value, timeStamp) {
+		value = this._truncateValue(value, 0, this.attributes.scrollSpace);
+		if (value === this.attributes.scrollTop) {
+			return;
+		}
+		this.element.stop();
+		this.element.animate({
+			scrollTop: value
+		}, "fast");
+
+		this.attributes.scrollTop = value;
+		this.attributes.scrollTimeStamp = timeStamp || (new Date()).getTime();
+		setTimeout(this._update, 0);
+	},
+
+	/**
 	 * Refresh elements and attributes
 	 */
 	refresh: function () {
@@ -698,6 +779,13 @@ SmartOverflow.prototype = {
 			}
 			this.elementThumb && this.elementThumb.remove();
 			this.elementThumbTrack && this.elementThumbTrack.remove();
+
+			if (this.config.hasThumbArrows) {
+				this.elementThumbArrowTop.off(".so");
+				this.elementThumbArrowBottom.off(".so");
+				this.elementThumbArrowTop.remove();
+				this.elementThumbArrowBottom.remove();
+			}
 		}
 		if (this.config.hasShadow) {
 			this.elementShadowTop && this.elementShadowTop.remove();
