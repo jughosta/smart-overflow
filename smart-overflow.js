@@ -397,10 +397,14 @@ SmartOverflow.prototype = {
 		if (isVisible) {
 			this.elementThumb.show();
 			this.elementThumbTrack && this.elementThumbTrack.show();
+			this.elementThumbArrowTop && this.elementThumbArrowTop.show();
+			this.elementThumbArrowBottom && this.elementThumbArrowBottom.show();
 		}
 		else {
 			this.elementThumb.hide();
 			this.elementThumbTrack && this.elementThumbTrack.hide();
+			this.elementThumbArrowTop && this.elementThumbArrowTop.hide();
+			this.elementThumbArrowBottom && this.elementThumbArrowBottom.hide();
 		}
 	},
 
