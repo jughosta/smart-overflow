@@ -1,13 +1,13 @@
 #Cross-platform "overflow: auto" to scroll a vertical large content on desktop or mobile devices.
 Has a thumb and top/bottom shadow.
 
-#Supports (depending on the platform):
+#Supports (auto detect platform):
 * devices with touch events
-    - native scrolling + "onscroll" events
-    - or programmatic scrolling on "touchstart/touchmove/touchend" events
+    - native scrolling + "onscroll" events (Android 4.x, WindowsPhone)
+    - or scrolling on "touchstart/touchmove/touchend" events (iOS, Android 2.x)
 * devices without touch events
     - native scrolling with native thumb
-    - or programmatic scrolling on "mousedown/mousemove/mouseend" events
+    - or scrolling on "mousedown/mousemove/mouseend" events
 
 #Platforms:
 - Desktop browsers
@@ -19,4 +19,4 @@ Scrolling content can consist any DOM elements with own click events.
 
 Required jQuery 1.7.1 and later.
 
-#Demo [is here](http://jsfiddle.net/jughosta/P28ju/embedded/result/ "SmartOverflow Demo")
+Demo [is here](http://jsfiddle.net/jughosta/P28ju/embedded/result/ "SmartOverflow Demo")
