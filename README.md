@@ -3,7 +3,7 @@ Has a thumb and top/bottom shadow.
 
 #Supports (auto detect platform):
 * devices with touch events
-    - native scrolling + "onscroll" events (Android 4.x, WindowsPhone)
+    - native scrolling + "onscroll" events (Android 4.x, WindowsPhone, iOS)
     - or scrolling on "touchstart/touchmove/touchend" events (iOS, Android 2.x)
 * devices without touch events
     - native scrolling with native thumb
